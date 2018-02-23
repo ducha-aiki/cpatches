@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 #Contour matrix format: n x 6. The rows are: x,y, label, delta_nx,delta_ny, radius. point coords, contours label, residual correction to normale, radius to extract patch.
 
 
+
 def denormalizeContour(contour, img_w, img_h):
     contour[:,0] = contour[:,0] * img_w;
     contour[:,1] = contour[:,1] * img_h;
@@ -58,7 +59,7 @@ def smoothAndGetNormals(points, sigma = 6.0):
     return x, un
 
 def GetContoursPatchGrid(conts, patchHeight):
-    sigma = 6.0;
+    sigma = 1.0;
     ph = patchHeight;
     x = torch.zeros(1, 2, conts.size(0))
     un = torch.zeros(1, 2, conts.size(0))
@@ -67,11 +68,18 @@ def GetContoursPatchGrid(conts, patchHeight):
         un = un.cuda()
     x = V(x)
     un = V(un)
-    for i in range(1+conts[:,2].max()):
-        idxs = conts[:,2] == i
+    if type(conts) is not torch.autograd.Variable:
+        conts = V(conts)
+    idxs_uniq = np.unique(conts[:,2].data.cpu().numpy())
+    for i in idxs_uniq:
+        idxs = conts[:,2] == int(i)
         if idxs.float().sum() < 1:
             continue
-        x[:,:,idxs], un[:,:,idxs] = smoothAndGetNormals(conts[idxs,0:2].t(), sigma)
+        x[:,:,idxs], un[:,:,idxs] = smoothAndGetNormals((conts[idxs,0:2]).t(), sigma)
+        #print (conts[idxs.nonzero(),:][:,0:2].squeeze()).t().shape
+        #try:
+        #except:
+        #    x[:,:,idxs], un[:,:,idxs] = smoothAndGetNormals((conts[idxs.nonzero(),:][:,0:2].squeeze()).t(), sigma)
     x = x.squeeze().t().unsqueeze(0)
     un = (un.squeeze().t().unsqueeze(0) + conts[:,3:5].unsqueeze(0))\
         * conts[:,5:6].view(-1,1).repeat(1,2).unsqueeze(0)
@@ -129,6 +137,8 @@ def DrawContourBoundaries(img, conts, c = ('g', 'b')):
     grid = GetContoursPatchGrid(conts, ph).transpose(1,2)
     plt.figure()
     plt.imshow(255 - img.cpu().data.numpy().squeeze())
+    if type(conts) is not torch.autograd.Variable:
+        conts = V(conts)
     for i in np.unique(conts[:,2].data.cpu().numpy()):
         idxs = torch.nonzero(conts[:,2] == int(i)).long()
         if len(idxs) < 1:
